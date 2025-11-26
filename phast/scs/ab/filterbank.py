@@ -106,7 +106,7 @@ def channel_energy(
 
 
 def hilbert_envelope(
-    X,
+    X, # X.shape == nBins x nFrames
     nChan=15,
     startBin=6,
     nBinLims=DEFAULT_BINS,
@@ -120,8 +120,11 @@ def hilbert_envelope(
 
     Y = np.zeros(X.shape, dtype=complex)
 
+    # even odd indices reversed because of MATLAB indexing?
+    # even bins in Python are actually odd -> X * (-1)**n_odd != -X
     Y[np.arange(0, X.shape[0] - 1, 2), :] = -X[np.arange(0, X.shape[0] - 1, 2), :]
 
+    # odd bins are even  -> X * (-1)**n_even != X
     Y[np.arange(0, X.shape[0] - 1, 2) + 1, :] = X[
         np.arange(0, X.shape[0] - 1, 2) + 1, :
     ]
@@ -131,25 +134,27 @@ def hilbert_envelope(
     envNoLog = np.zeros((nChan, L))
     currentBin = startBin
 
-    numFullFrqBin = np.floor(nBinLims / 4)
-    numPartFrqBin = np.mod(nBinLims, 4)
-    logFiltCorrect = np.array([2233, 952, 62, 0]) / (2**10)
+    numFullFrqBin = np.floor(nBinLims / 4) # how many groups of 4 bins
+    numPartFrqBin = np.mod(nBinLims, 4) # remainder 1, 2, ,3 bins
+    logFiltCorrect = np.array([2233, 952, 62, 0]) / (2**10) # TODO ??
 
-    logCorrect = logFiltCorrect + outputOffset + 16
+    logCorrect = logFiltCorrect + outputOffset + 16 # ??
 
     for i in np.arange(nChan):
+        # access by groups of 4
         for j in np.arange(numFullFrqBin[i]):
             sr = np.sum(np.real(Y[currentBin : currentBin + 4, :]), axis=0)
             si = np.sum(np.imag(Y[currentBin : currentBin + 4, :]), axis=0)
             env[i, :] = env[i, :] + sr**2 + si**2
             currentBin += 4
+        #access remaining ones
         sr = np.sum(np.real(Y[currentBin : currentBin + numPartFrqBin[i], :]), axis=0)
         si = np.sum(np.imag(Y[currentBin : currentBin + numPartFrqBin[i], :]), axis=0)
 
         env[i, :] = env[i, :] + sr**2 + si**2
 
         envNoLog[i, :] = env[i, :]
-        env[i, :] = np.log2(env[i, :])
+        env[i, :] = np.log2(env[i, :]) # why log2 and not square root, like the Nogueira paper?
 
         if nBinLims[i] > logCorrect.size - 1:
             env[i, :] = env[i, :] + logCorrect[-1:]
@@ -159,7 +164,7 @@ def hilbert_envelope(
             )  # correcting here for matlab base-1 indexing
         currentBin += numPartFrqBin[i]
 
-    ix = ~np.isfinite(env)
+    ix = ~np.isfinite(env) # Test element-wise for finiteness (not infinity and not Not a Number).
     env[ix] = 0
 
     return np.maximum(np.minimum(env, upperBound), lowerBound)
