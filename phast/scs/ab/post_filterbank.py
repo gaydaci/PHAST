@@ -44,7 +44,8 @@ def spec_peak_locator(
     loc = np.zeros((nChan, nFrames))
     binCorrection = np.zeros((1, nFrames))
 
-    PSD = np.real(stftIn * np.conj(stftIn)) / 2
+    PSD = np.real(stftIn * np.conj(stftIn)) / 2 # Power Spectral density = e(n) = X_r **2(n) + X_i**2(n) 
+                                                # normalization because of one sided FFT spectrum
     PSD = np.maximum(PSD, 10 ** (-120 / 20))
 
     currentBin = startBin - 1  # account for matlab indexing
@@ -55,7 +56,9 @@ def spec_peak_locator(
         maxBin[i, :] = currentBin + argMaxPsd
         currentBin += nBinLims[i]
 
+    # Parabolic fitting between three FFT bins
     for i in np.arange(nChan):
+        # log2 versus 20*log10 ?
         midVal = np.log2(PSD[maxBin[i, :], np.arange(nFrames)])
         leftVal = np.log2(PSD[maxBin[i, :] - 1, np.arange(nFrames)])
         rightVal = np.log2(PSD[maxBin[i, :] + 1, np.arange(nFrames)])
@@ -63,17 +66,21 @@ def spec_peak_locator(
         maxLeftRight = np.maximum(leftVal, rightVal)
         midIsMax = midVal > maxLeftRight
 
+        # if peak is the middle bin -> fit parabola  c = ... [13] Nogueira
         binCorrection[:, midIsMax] = (
             0.5
             * (rightVal[midIsMax] - leftVal[midIsMax])
             / (2 * midVal[midIsMax] - leftVal[midIsMax] - rightVal[midIsMax])
         )
+
+        # if side bin is max, then move half a bin towards the louder neighbor
         binCorrection[:, ~midIsMax] = 0.5 * (
             rightVal[~midIsMax] == maxLeftRight[~midIsMax]
         ) - 0.5 * (leftVal[~midIsMax] == maxLeftRight[~midIsMax])
 
-        freqInterp[i, :] = fftBinWidth * (maxBin[i, :] + binCorrection)
-        deltaLocIdx = maxBin[i, :] + np.sign(binCorrection).astype(int)
+        # bin index to true frequency in Hz
+        freqInterp[i, :] = fftBinWidth * (maxBin[i, :] + binCorrection) # (n_max + c != n*_max) Nogueira [14]
+        deltaLocIdx = maxBin[i, :] + np.sign(binCorrection).astype(int) 
 
         loc[i, :] = binToLoc[maxBin[i, :]] + binCorrection * np.abs(
             binToLoc[maxBin[i, :]] - binToLoc[deltaLocIdx]

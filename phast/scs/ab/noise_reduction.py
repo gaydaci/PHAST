@@ -76,8 +76,8 @@ def noise_reduction(
     dtFrame = nHop / fs
 
     nCh, nFrame = A.shape
-    alpha_s = np.exp(-dtFrame / tau_speech)
-    alpha_n = np.exp(-dtFrame / tau_noise)
+    alpha_s = np.exp(-dtFrame / tau_speech) # 25ms short time, fast speech changes
+    alpha_n = np.exp(-dtFrame / tau_noise)  # 219ms longer time
 
     maxHold = durHold / (dtFrame * noiseEstDecimation)
     maxAttLin = 10 ** (-np.abs(maxAtt) / 20)
@@ -100,7 +100,7 @@ def noise_reduction(
     HoldCount = initState.get("HoldCount", np.zeros(nCh) + maxHold)
 
     for iFrame in np.arange(nFrame):
-        V_s = alpha_s * V_s + (1 - alpha_s) * logA[:, iFrame]
+        V_s = alpha_s * V_s + (1 - alpha_s) * logA[:, iFrame] 
         if np.mod(iFrame - 1, noiseEstDecimation) == noiseEstDecimation - 1:
             maskSteady = (V_s - V_n) < threshHold
             maskOnset = ~maskSteady & HoldReady
@@ -110,6 +110,7 @@ def noise_reduction(
             V_n[maskUpdateNoise] = (
                 alpha_n * V_n[maskUpdateNoise] + (1 - alpha_n) * V_s[maskUpdateNoise]
             )
+            # mask for noise, only when speech is not present?
 
             Hold[maskOnset] = True
             HoldReady[maskOnset] = False
@@ -122,6 +123,7 @@ def noise_reduction(
 
         # compute gains
         SNR = V_s - V_n
+        # SNR clipped between -2 and 45 dB
         G[:, iFrame] = gMin + np.divide(
             (1 - gMin),
             1

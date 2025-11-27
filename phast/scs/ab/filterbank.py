@@ -81,13 +81,13 @@ def channel_energy(
     for iChan in np.arange(nChan):
         currBinIdx = np.arange(currentBin, currentBin + nBinLims[iChan])
         try:
-            engy[iChan, :] = np.sum(np.abs(X[currBinIdx, :]) ** 2, axis=0)
+            engy[iChan, :] = np.sum(np.abs(X[currBinIdx, :]) ** 2, axis=0) # in the paper e(n) = X_r**2(n) + X_i**2(n)
         except Exception as err:
             print(err)
             breakpoint()
         currentBin += nBinLims[iChan]
 
-    engy = np.sqrt(engy)
+    engy = np.sqrt(engy) # RMS without dividing number of channels, root-sum-square actually
 
     # compensate AGC gain, if applicable
     if lenAgcIn > 0:
