@@ -44,8 +44,9 @@ def spec_peak_locator(
     loc = np.zeros((nChan, nFrames))
     binCorrection = np.zeros((1, nFrames))
 
-    PSD = np.real(stftIn * np.conj(stftIn)) / 2 # Power Spectral density = e(n) = X_r **2(n) + X_i**2(n) 
-                                                # normalization because of one sided FFT spectrum
+    PSD = np.real(stftIn * np.conj(stftIn)) / 2 # Power Spectral density : e(n) = X_r **2(n) + X_i**2(n) 
+                                                # normalization because of one sided FFT spectrum 
+                                                # should be real anyway?
     PSD = np.maximum(PSD, 10 ** (-120 / 20))
 
     currentBin = startBin - 1  # account for matlab indexing
@@ -66,32 +67,33 @@ def spec_peak_locator(
         maxLeftRight = np.maximum(leftVal, rightVal)
         midIsMax = midVal > maxLeftRight
 
-        # if peak is the middle bin -> fit parabola  c = ... [13] Nogueira
+        # if peak is the middle bin -> fit parabola  bin Correction != c = ... [13] Nogueira
         binCorrection[:, midIsMax] = (
             0.5
             * (rightVal[midIsMax] - leftVal[midIsMax])
             / (2 * midVal[midIsMax] - leftVal[midIsMax] - rightVal[midIsMax])
         )
 
-        # if side bin is max, then move half a bin towards the louder neighbor
+        # if side bin is max, then move half a bin towards the louder neighbor +- 0.5
         binCorrection[:, ~midIsMax] = 0.5 * (
             rightVal[~midIsMax] == maxLeftRight[~midIsMax]
         ) - 0.5 * (leftVal[~midIsMax] == maxLeftRight[~midIsMax])
 
         # bin index to true frequency in Hz
         freqInterp[i, :] = fftBinWidth * (maxBin[i, :] + binCorrection) # (n_max + c != n*_max) Nogueira [14]
-        deltaLocIdx = maxBin[i, :] + np.sign(binCorrection).astype(int) 
-
+        deltaLocIdx = maxBin[i, :] + np.sign(binCorrection).astype(int) # adjacent bin in the direction of the true peak
+                                                                        # peak in the right -> +1, left -1
         loc[i, :] = binToLoc[maxBin[i, :]] + binCorrection * np.abs(
-            binToLoc[maxBin[i, :]] - binToLoc[deltaLocIdx]
-        )
+            binToLoc[maxBin[i, :]] - binToLoc[deltaLocIdx]          #convert bin indices → cochlear locations (binToLoc).
+        )                                                       #Interpolate cochlear location using fractional bin shift. binToLOc = [0,....,14.999]
+                                                                #Output continuous cochlear place (loc), used to generate virtual channels.
 
     return freqInterp, loc
 
 
 def upsample(signal, n_cols, **kwargs):
-    signal = np.repeat(signal, 3, axis=1)
-    return np.concatenate((np.zeros((signal.shape[0], 2)), signal), axis=1)[:, :n_cols]
+    signal = np.repeat(signal, 3, axis=1) # before calculated only every third frame, so complement in between
+    return np.concatenate((np.zeros((signal.shape[0], 2)), signal), axis=1)[:, :n_cols] # and two zeros at the beginning, since spec_peak_loc started on the 2nd frame
 
 
 def current_steering_weights(
@@ -160,20 +162,20 @@ def current_steering_weights(
 
     for iCh in np.arange(nChan):
 
-        weightHiRaw = loc[iCh, :] - iCh
+        weightHiRaw = loc[iCh, :] - iCh   # raw undiscretized steering weight = fractional distance from electrode i toward i+1
         weightHiRaw = np.maximum(np.minimum(weightHiRaw, 1), 0)
 
         if nDiscreteSteps == 1:
-            weightHiRaw = 0.5
+            weightHiRaw = 0.5 # No steering, Like HiRes every channel stimulates the midpoint of the electrode pair.
         elif nDiscreteSteps > 1:
             weightHiRaw = np.floor(weightHiRaw * (nDiscreteSteps - 1) + 0.5) / (
                 nDiscreteSteps - 1
             )
             # add +.5 and use floor to force round-half-away-from-zero (python round uses round-half-towards-even),
             # only works for positive values
-        weightHi = steeringRange[0, iCh] + weightHiRaw * np.diff(steeringRange[:, iCh])
+        weightHi = steeringRange[0, iCh] + weightHiRaw * np.diff(steeringRange[:, iCh]) # Noguiera [17]
         weights[iCh, :] = 1 - weightHi
-        weights[iCh + nChan, :] = weightHi
+        weights[iCh + nChan, :] = weightHi  
 
     return weights
 
