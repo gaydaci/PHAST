@@ -211,10 +211,12 @@ def carrier_synthesis(
       tFtFrame - start time of each FT frame, starting with 0 [s]
     """
 
+    #FFT analysis frame rate is slow, poor temporal pitch
+
     nFrame = fPeak.shape[1]
     durFrame = nHop / fs  # duration of 1 audio frame [s]
     durStimCycle = (
-        2 * pulseWidth * nChan * 1e-6
+        2 * pulseWidth * nChan * 1e-6  # 2 for biphasic in pulseWidth in [ms]
     )  # duration of a full stimulation cycle [s].
     # Depends on number of channels because 1 period contains stimulation of all electrodes
     rateFt = np.round(
@@ -235,10 +237,10 @@ def carrier_synthesis(
 
     # compute phase accumulation per channel and frame
     deltaPhiNorm = np.minimum(
-        fPeakPerFtFrame / rateFt, deltaPhaseMax
+        fPeakPerFtFrame / rateFt, deltaPhaseMax  # here deltaPhi normalized 0...1 in paper 0...CSR
     )  # delta phase in turns, i.e. [rad/2*pi]
     phiNorm = np.mod(
-        np.cumsum(deltaPhiNorm, axis=1), 1
+        np.cumsum(deltaPhiNorm, axis=1), 1  # nogueira [19] mod (1) instead of CSR
     )  # accumulated phase, modulo 1 [turns]
 
     # compute modulation depth (per channel and frame)
@@ -251,12 +253,12 @@ def carrier_synthesis(
     modDepth = (
         maxModDepth
         * (
-            fModOff - np.minimum(np.maximum(fPeakPerFtFrame, fModOn), fModOff)
+            fModOff - np.minimum(np.maximum(fPeakPerFtFrame, fModOn), fModOff) 
         )  # replace minima and maxima with minimal and maximal frequency
         / (fModOff - fModOn)  # normalize the peak frequencies between the two
     )
 
     # sythesize carrier: phase-dependent alternation x modulation depth
-    carrier = 1 - (modDepth * (phiNorm < 0.5))
+    carrier = 1 - (modDepth * (phiNorm < 0.5))  # nogueira [21] with [20] sz = 0.5 instead of CSR/2
 
     return carrier, idxAudFrame
